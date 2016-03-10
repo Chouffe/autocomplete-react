@@ -1,0 +1,199 @@
+<!-- index.html -->
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>React Playground</title>
+
+    <link rel="stylesheet" href="//maxcdn.bootstrapcdn.com/bootstrap/3.3.0/css/bootstrap.min.css">
+    <link href="//maxcdn.bootstrapcdn.com/font-awesome/4.2.0/css/font-awesome.min.css" rel="stylesheet">
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/react/0.14.7/react.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/react/0.14.7/react-dom.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/redux/3.3.1/redux.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/react-redux/4.4.0/react-redux.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/immutable/3.7.6/immutable.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-core/5.8.23/browser.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/2.2.0/jquery.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/0.3.5/marked.min.js"></script>
+
+  </head>
+  <body>
+    <div id="content"></div>
+    <script type="text/babel">
+
+      const { createStore } = Redux;
+      const { Map, List, Set } = Immutable;
+
+      const languageSet = new Set(["Java", "Javascript", "ClojureScript", "Clojure", "Scheme", "Erlang", "Haskell", "Elm", "Common Lisp"]);
+      const countrySet = new Set(["France", "Spain", "Belgium", "Germany", "USA"]);
+      const emptySet = new Set([]);
+
+      const sets = new List([ Map({name: "Languages", set: languageSet}),
+                              Map({name: "Countries", set: countrySet}),
+                              Map({name: "Empty", set: emptySet}),
+                             ]);
+
+      const initialState = new Map({ items: languageSet, query: "", sets: sets, showAutocompleteList: false});
+
+      function wrapLogs (reducer) {
+        return function (state, action) {
+          console.log("Old State=> ", state);
+          console.log("Action=> ", action);
+          const newState = reducer(state, action);
+          console.log("New State=> ", newState);
+          return newState;
+          }
+        }
+
+      function storeReducer(state = initialState, action) {
+
+        switch (action.type) {
+
+          case 'SHOW':
+            return state.set("showAutocompleteList", true);
+
+          case 'HIDE':
+            return state.set("showAutocompleteList", false);
+
+          case 'RESET':
+
+            switch (action.resetType) {
+
+                case 'LANGUAGES':
+                  return state.set("items", languageSet );
+
+                case 'COUNTRIES':
+                  return state.set("items", countrySet);
+
+                default:
+                  return state.set("items", emptySet);
+              }
+
+          case 'QUERY':
+            return state.set("query", action.query);
+
+          case 'ADD':
+            if (state.get("items").get(action.item)) {
+              return state;
+            }
+            else {
+              return state.update("items", items => items.add(action.item));
+            }
+
+          default:
+            return state;
+          }
+        }
+
+      let store = Redux.createStore(wrapLogs(storeReducer));
+
+      var InputList = React.createClass({
+        render: function () {
+            return (
+              <form onSubmit={(evt) => {
+                evt.preventDefault();
+                store.dispatch({
+                  type: 'ADD',
+                  item: document.getElementById("item").value
+                });
+              }}>
+                <input className="form-control" type="text" placeholder="Add to the list" name="item" id="item" />
+              </form>
+            );
+          }
+        });
+
+      var ResetList = React.createClass({
+
+        loadSet: function () {
+
+          // Pure Mapping from name to Dispatch Action Types in the closure of the handler function.
+          // It should only be a HashMap (no need for that stupid ceremony)
+          const resetType = (name) => {
+            switch (name) {
+              case 'Countries':
+                return 'COUNTRIES';
+              case 'Languages':
+                return 'LANGUAGES';
+              default:
+                return 'EMPTY';
+            }
+          }
+          return function (evt) {
+            return store.dispatch({ type: 'RESET', resetType: resetType(evt.target.value) });
+            };
+          },
+
+          render: function () {
+            return (
+            <select className="form-control" name="loadList" onChange={this.loadSet()}>
+            {
+              this.props.items.map( entry => <option key={entry.get("name")} value={entry.get("name")}>{entry.get("name")}</option>)
+            }
+            </select>
+            )}
+        })
+
+      const AutocompleteList = ({items}) => (
+        <ul className="list-group">
+        {
+          items.sort().map( item => <li className="list-group-item" key={item}>{item}</li>)
+        }
+        </ul>
+        );
+
+      var FilteredList = React.createClass({
+        display: function (isVisible) {
+            if (isVisible) {
+              return "list-group";
+            }
+            else {
+              return "hide";
+            }
+        },
+
+        render: function () {
+
+          return (
+          <div>
+            <input placeholder="Try autocompletion here" type="text" className="form-control" onFocus={() => store.dispatch({'type': 'SHOW'})} onChange={(evt) => store.dispatch({type: 'QUERY', 'query': evt.target.value })} />
+            <br />
+            <ul className={this.display(this.props.visible)}>
+              {
+                this.props.items.filter( item => item.toLowerCase().search( this.props.searchString.toLowerCase() ) !== -1 )
+                                .sort()
+                                .map( item => <li className="list-group-item" key={item}>{item}</li> )
+              }
+            </ul>
+          </div>
+          );
+        }
+      });
+
+      const render = () => {
+        ReactDOM.render(
+          <div>
+             <div className="row">
+               <div className="col-xs-6">
+                  <InputList />
+                  <br />
+                  <ResetList items={store.getState().get("sets")} />
+                  <br />
+                  <AutocompleteList items={store.getState().get("items")} />
+                </div>
+               <div className="col-xs-6">
+                 <FilteredList visible={store.getState().get("showAutocompleteList")} items={store.getState().get("items")} searchString={store.getState().get("query")}/>
+               </div>
+             </div>
+          </div>,
+          document.getElementById('content')
+        );
+      };
+
+      store.subscribe(render);
+      render();
+
+    </script>
+  </body>
+</html>
